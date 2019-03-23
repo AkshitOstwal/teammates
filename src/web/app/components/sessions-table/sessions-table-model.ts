@@ -1,5 +1,4 @@
-import { FeedbackSession, FeedbackSessionStudentResponse } from '../../../types/api-output';
-import { InstructorPrivilege } from '../../instructor-privilege';
+import { FeedbackSession, FeedbackSessionStudentResponse, InstructorPrivilege } from '../../../types/api-output';
 
 /**
  * The model for a row of the sessions table.
@@ -85,6 +84,11 @@ export enum SortBy {
   COURSE_NAME,
 
   /**
+   * The creation time of the course.
+   */
+  COURSE_CREATION_DATE,
+
+  /**
    * Feedback session name.
    */
   FEEDBACK_SESSION_NAME,
@@ -102,7 +106,7 @@ export enum SortBy {
   /**
    * The creation time of the feedback session.
    */
-  CREATION_DATE,
+  SESSION_CREATION_DATE,
 
   /**
    * The time when the feedback session is moved to recycle bin.

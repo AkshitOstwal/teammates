@@ -4,10 +4,8 @@ import static com.googlecode.objectify.ObjectifyService.ofy;
 
 import java.time.Instant;
 
-import com.google.appengine.api.blobstore.BlobKey;
 import com.googlecode.objectify.Key;
 import com.googlecode.objectify.cmd.LoadType;
-import com.googlecode.objectify.cmd.QueryKeys;
 
 import teammates.common.datatransfer.attributes.StudentProfileAttributes;
 import teammates.common.exception.InvalidParametersException;
@@ -67,7 +65,7 @@ public class ProfilesDb extends EntitiesDb<StudentProfile, StudentProfileAttribu
         studentProfile.setNationality(newAttributes.nationality);
         studentProfile.setGender(newAttributes.gender.name().toLowerCase());
         studentProfile.setMoreInfo(newAttributes.moreInfo);
-        studentProfile.setPictureKey(new BlobKey(newAttributes.pictureKey));
+        studentProfile.setPictureKey(newAttributes.pictureKey);
         studentProfile.setModifiedDate(Instant.now());
 
         saveEntity(studentProfile);
@@ -93,10 +91,12 @@ public class ProfilesDb extends EntitiesDb<StudentProfile, StudentProfileAttribu
         if (sp == null) {
             return;
         }
-        if (!sp.getPictureKey().equals(new BlobKey(""))) {
+        if (!sp.getPictureKey().equals("")) {
             deletePicture(sp.getPictureKey());
         }
-        deleteEntityDirect(sp);
+        Key<Account> parentKey = Key.create(Account.class, googleId);
+        Key<StudentProfile> profileKey = Key.create(parentKey, StudentProfile.class, googleId);
+        deleteEntity(profileKey);
     }
 
     /**
@@ -104,8 +104,24 @@ public class ProfilesDb extends EntitiesDb<StudentProfile, StudentProfileAttribu
      *
      * <p>Fails silently if the {@code key} doesn't exist.</p>
      */
-    public void deletePicture(BlobKey key) {
+    public void deletePicture(String key) {
         GoogleCloudStorageHelper.deleteFile(key);
+    }
+
+    /**
+     * Deletes the {@code pictureKey} of the profile with given {@code googleId} by setting it to an empty string.
+     *
+     * <p>Fails silently if the {@code studentProfile} doesn't exist.</p>
+     */
+    public void deletePictureKey(String googleId) {
+        Assumption.assertNotNull(Const.StatusCodes.DBLEVEL_NULL_INPUT, googleId);
+        StudentProfile studentProfile = getStudentProfileEntityFromDb(googleId);
+
+        if (studentProfile != null) {
+            studentProfile.setPictureKey("");
+            studentProfile.setModifiedDate(Instant.now());
+            saveEntity(studentProfile);
+        }
     }
 
     //-------------------------------------------------------------------------------------------------------
@@ -135,10 +151,10 @@ public class ProfilesDb extends EntitiesDb<StudentProfile, StudentProfileAttribu
     }
 
     @Override
-    protected QueryKeys<StudentProfile> getEntityQueryKeys(StudentProfileAttributes attributes) {
-        Key<Account> parentKey = Key.create(Account.class, attributes.googleId);
-        Key<StudentProfile> childKey = Key.create(parentKey, StudentProfile.class, attributes.googleId);
-        return load().filterKey(childKey).keys();
+    protected boolean hasExistingEntities(StudentProfileAttributes entityToCreate) {
+        Key<Account> parentKey = Key.create(Account.class, entityToCreate.getGoogleId());
+        Key<StudentProfile> childKey = Key.create(parentKey, StudentProfile.class, entityToCreate.getGoogleId());
+        return !load().filterKey(childKey).keys().list().isEmpty();
     }
 
     @Override

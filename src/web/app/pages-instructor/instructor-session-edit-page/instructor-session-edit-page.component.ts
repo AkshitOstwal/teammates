@@ -5,6 +5,7 @@ import moment from 'moment-timezone';
 import { forkJoin, Observable, of } from 'rxjs';
 import { concatMap, finalize, flatMap, map, switchMap, tap } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
+import { CourseService } from '../../../services/course.service';
 import { FeedbackQuestionsService, NewQuestionModel } from '../../../services/feedback-questions.service';
 import { FeedbackSessionsService } from '../../../services/feedback-sessions.service';
 import { HttpRequestService } from '../../../services/http-request.service';
@@ -12,30 +13,31 @@ import { NavigationService } from '../../../services/navigation.service';
 import { StatusMessageService } from '../../../services/status-message.service';
 import { LOCAL_DATE_TIME_FORMAT, TimeResolvingResult, TimezoneService } from '../../../services/timezone.service';
 import {
+  Course,
+  Courses,
   FeedbackParticipantType,
   FeedbackQuestion,
   FeedbackQuestions,
   FeedbackQuestionType,
   FeedbackSession,
   FeedbackSessionPublishStatus, FeedbackSessions,
-  FeedbackSessionSubmissionStatus, FeedbackTextQuestionDetails,
+  FeedbackSessionSubmissionStatus, FeedbackTextQuestionDetails, Instructor, Instructors,
   NumberOfEntitiesToGiveFeedbackToSetting,
   ResponseVisibleSetting,
-  SessionVisibleSetting,
+  SessionVisibleSetting, Student, Students,
 } from '../../../types/api-output';
 import { CopySessionModalResult } from '../../components/copy-session-modal/copy-session-modal-model';
 import { CopySessionModalComponent } from '../../components/copy-session-modal/copy-session-modal.component';
 import {
   QuestionEditFormMode,
   QuestionEditFormModel,
-} from '../../components/question-types/question-types-session-edit/question-edit-form-model';
+} from '../../components/question-edit-form/question-edit-form-model';
 import {
   DateFormat,
   SessionEditFormMode,
   SessionEditFormModel,
   TimeFormat,
 } from '../../components/session-edit-form/session-edit-form-model';
-import { Course, Courses } from '../../course';
 import { ErrorMessageOutput } from '../../error-message-output';
 import { Intent } from '../../Intent';
 import { InstructorSessionBasePageComponent } from '../instructor-session-base-page.component';
@@ -141,10 +143,23 @@ export class InstructorSessionEditPageComponent extends InstructorSessionBasePag
 
   isAddingQuestionPanelExpanded: boolean = false;
 
-  constructor(router: Router, httpRequestService: HttpRequestService,
-              statusMessageService: StatusMessageService, navigationService: NavigationService,
-              feedbackSessionsService: FeedbackSessionsService, feedbackQuestionsService: FeedbackQuestionsService,
-              private route: ActivatedRoute, private timezoneService: TimezoneService, private modalService: NgbModal) {
+  // all students of the course
+  studentsOfCourse: Student[] = [];
+  emailOfStudentToPreview: string = '';
+  // instructors which can be previewed as
+  instructorsCanBePreviewedAs: Instructor[] = [];
+  emailOfInstructorToPreview: string = '';
+
+  constructor(router: Router,
+              httpRequestService: HttpRequestService,
+              statusMessageService: StatusMessageService,
+              navigationService: NavigationService,
+              feedbackSessionsService: FeedbackSessionsService,
+              feedbackQuestionsService: FeedbackQuestionsService,
+              private courseService: CourseService,
+              private route: ActivatedRoute,
+              private timezoneService: TimezoneService,
+              private modalService: NgbModal) {
     super(router, httpRequestService, statusMessageService, navigationService,
         feedbackSessionsService, feedbackQuestionsService);
   }
@@ -157,6 +172,8 @@ export class InstructorSessionEditPageComponent extends InstructorSessionBasePag
 
       this.loadFeedbackSession();
       this.loadFeedbackQuestions();
+      this.getAllStudentsOfCourse();
+      this.getAllInstructorsCanBePreviewedAs();
     });
   }
 
@@ -165,23 +182,22 @@ export class InstructorSessionEditPageComponent extends InstructorSessionBasePag
    */
   loadFeedbackSession(): void {
     // load the course of the feedback session first
-    this.httpRequestService.get('/course', { courseid: this.courseId })
-        .subscribe((course: Course) => {
-          this.courseName = course.courseName;
+    this.courseService.getCourse(this.courseId).subscribe((course: Course) => {
+      this.courseName = course.courseName;
 
-          // load feedback session
-          const paramMap: { [key: string]: string } = {
-            courseid: this.courseId,
-            fsname: this.feedbackSessionName,
-            intent: Intent.FULL_DETAIL,
-          };
-          this.httpRequestService.get('/session', paramMap)
-              .subscribe((feedbackSession: FeedbackSession) => {
-                this.sessionEditFormModel = this.getSessionEditFormModel(feedbackSession);
-              }, (resp: ErrorMessageOutput) => {
-                this.statusMessageService.showErrorMessage(resp.error.message);
-              });
+      // load feedback session
+      const paramMap: { [key: string]: string } = {
+        courseid: this.courseId,
+        fsname: this.feedbackSessionName,
+        intent: Intent.FULL_DETAIL,
+      };
+      this.httpRequestService.get('/session', paramMap)
+        .subscribe((feedbackSession: FeedbackSession) => {
+          this.sessionEditFormModel = this.getSessionEditFormModel(feedbackSession);
+        }, (resp: ErrorMessageOutput) => {
+          this.statusMessageService.showErrorMessage(resp.error.message);
         });
+    });
   }
 
   /**
@@ -189,7 +205,10 @@ export class InstructorSessionEditPageComponent extends InstructorSessionBasePag
    */
   copyCurrentSession(): void {
     // load course candidates first
-    this.httpRequestService.get('/courses').subscribe((courses: Courses) => {
+    this.httpRequestService.get('/courses', {
+      entitytype: 'instructor',
+      coursestatus: 'active',
+    }).subscribe((courses: Courses) => {
       const modalRef: NgbModalRef = this.modalService.open(CopySessionModalComponent);
       modalRef.componentInstance.newFeedbackSessionName = this.feedbackSessionName;
       modalRef.componentInstance.courseCandidates = courses.courses;
@@ -778,6 +797,76 @@ export class InstructorSessionEditPageComponent extends InstructorSessionBasePag
   questionsHelpHandler(): void {
     window.open(`${environment.frontendUrl}/web/instructor/help`);
     // TODO scroll down to the question specific section in the help page
+  }
+
+  /**
+   * Gets all students of a course.
+   */
+  getAllStudentsOfCourse(): void {
+    const paramMap: { [key: string]: string } = {
+      courseid: this.courseId,
+    };
+    this.httpRequestService.get('/students', paramMap)
+        .subscribe((students: Students) => {
+          this.studentsOfCourse = students.students;
+
+          // sort the student list based on team name and student name
+          this.studentsOfCourse.sort((a: Student, b: Student): number => {
+            const teamNameCompare: number = a.teamName.localeCompare(b.teamName);
+            if (teamNameCompare === 0) {
+              return a.name.localeCompare(b.name);
+            }
+            return teamNameCompare;
+          });
+
+          // select the first student
+          if (this.studentsOfCourse.length >= 1) {
+            this.emailOfStudentToPreview = this.studentsOfCourse[0].email;
+          }
+        }, (resp: ErrorMessageOutput) => { this.statusMessageService.showErrorMessage(resp.error.message); });
+  }
+
+  /**
+   * Gets all instructors of a course which can be previewed as.
+   */
+  getAllInstructorsCanBePreviewedAs(): void {
+    const paramMap: { [key: string]: string } = {
+      courseid: this.courseId,
+      intent: Intent.FULL_DETAIL,
+    };
+    this.httpRequestService.get('/instructors', paramMap)
+        .subscribe((instructors: Instructors) => {
+          this.instructorsCanBePreviewedAs = instructors.instructors;
+
+          // TODO use privilege API to filter instructors who has INSTRUCTOR_PERMISSION_SUBMIT_SESSION_IN_SECTIONS
+          // in the feedback session
+
+          // sort the instructor list based on name
+          this.instructorsCanBePreviewedAs.sort((a: Instructor, b: Instructor): number => {
+            return a.name.localeCompare(b.name);
+          });
+
+          // select the first instructor
+          if (this.instructorsCanBePreviewedAs.length >= 1) {
+            this.emailOfInstructorToPreview = this.instructorsCanBePreviewedAs[0].email;
+          }
+        }, (resp: ErrorMessageOutput) => { this.statusMessageService.showErrorMessage(resp.error.message); });
+  }
+
+  /**
+   * Previews the submission of the feedback session as a student.
+   */
+  previewAsStudent(): void {
+    window.open(`${environment.frontendUrl}/web/sessions/submission`
+        + `?courseid=${this.courseId}&fsname=${this.feedbackSessionName}&previewas=${this.emailOfStudentToPreview}`);
+  }
+
+  /**
+   * Previews the submission of the feedback session as an instructor.
+   */
+  previewAsInstructor(): void {
+    window.open(`${environment.frontendUrl}/web/instructor/sessions/submission`
+        + `?courseid=${this.courseId}&fsname=${this.feedbackSessionName}&previewas=${this.emailOfInstructorToPreview}`);
   }
 
   private deepCopy<T>(obj: T): T {

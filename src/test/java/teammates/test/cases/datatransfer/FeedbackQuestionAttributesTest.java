@@ -1,6 +1,5 @@
 package teammates.test.cases.datatransfer;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -10,14 +9,14 @@ import org.testng.collections.Lists;
 import teammates.common.datatransfer.DataBundle;
 import teammates.common.datatransfer.FeedbackParticipantType;
 import teammates.common.datatransfer.attributes.FeedbackQuestionAttributes;
+import teammates.common.datatransfer.questions.FeedbackQuestionDetails;
 import teammates.common.datatransfer.questions.FeedbackQuestionType;
 import teammates.common.datatransfer.questions.FeedbackTextQuestionDetails;
-import teammates.common.exception.EntityAlreadyExistsException;
 import teammates.common.exception.InvalidParametersException;
 import teammates.common.util.Const;
 import teammates.common.util.FieldValidator;
+import teammates.common.util.JsonUtils;
 import teammates.common.util.StringHelper;
-import teammates.storage.api.FeedbackQuestionsDb;
 import teammates.storage.entity.FeedbackQuestion;
 
 /**
@@ -32,7 +31,7 @@ public class FeedbackQuestionAttributesTest extends BaseAttributesTest {
     public void testToEntity() {
         FeedbackQuestionAttributes fqa = getNewFeedbackQuestionAttributes();
         FeedbackQuestion expectedQuestion = new FeedbackQuestion(fqa.getFeedbackSessionName(), fqa.getCourseId(),
-                fqa.getQuestionMetaData(), fqa.getQuestionDescription(), fqa.getQuestionNumber(),
+                fqa.getSerializedQuestionDetails(), fqa.getQuestionDescription(), fqa.getQuestionNumber(),
                 fqa.getQuestionType(), fqa.getGiverType(), fqa.getRecipientType(), fqa.getNumberOfEntitiesToGiveFeedbackTo(),
                 fqa.getShowResponsesTo(), fqa.showGiverNameTo, fqa.showRecipientNameTo);
 
@@ -56,34 +55,98 @@ public class FeedbackQuestionAttributesTest extends BaseAttributesTest {
     }
 
     @Test
-    public void testValueOf() throws InvalidParametersException, EntityAlreadyExistsException {
+    public void testValueOf_withAllFieldPopulatedFeedbackQuestion_shouldGenerateAttributesCorrectly() {
+        FeedbackQuestion qn = new FeedbackQuestion("session", "course",
+                "text", "description", 1, FeedbackQuestionType.TEXT,
+                FeedbackParticipantType.STUDENTS, FeedbackParticipantType.STUDENTS, Const.MAX_POSSIBLE_RECIPIENTS,
+                new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+        qn.setFeedbackQuestionId(1L);
+
+        FeedbackQuestionAttributes feedbackQuestionAttributes = FeedbackQuestionAttributes.valueOf(qn);
+
+        assertEquals(qn.getId(), feedbackQuestionAttributes.getId());
+        assertEquals(qn.getFeedbackSessionName(), feedbackQuestionAttributes.getFeedbackSessionName());
+        assertEquals(qn.getCourseId(), feedbackQuestionAttributes.getCourseId());
+        assertEquals(qn.getQuestionMetaData(), feedbackQuestionAttributes.getQuestionDetails().getQuestionText());
+        assertEquals(qn.getQuestionDescription(), feedbackQuestionAttributes.getQuestionDescription());
+        assertEquals(feedbackQuestionAttributes.getQuestionNumber(), qn.getQuestionNumber());
+        assertEquals(qn.getQuestionType(), feedbackQuestionAttributes.getQuestionType());
+        assertEquals(qn.getGiverType(), feedbackQuestionAttributes.getGiverType());
+        assertEquals(qn.getRecipientType(), feedbackQuestionAttributes.getRecipientType());
+        assertEquals(qn.getNumberOfEntitiesToGiveFeedbackTo(),
+                feedbackQuestionAttributes.getNumberOfEntitiesToGiveFeedbackTo());
+
+        assertEquals(new ArrayList<>(), feedbackQuestionAttributes.getShowGiverNameTo());
+        assertEquals(new ArrayList<>(), feedbackQuestionAttributes.getShowRecipientNameTo());
+        assertEquals(new ArrayList<>(), feedbackQuestionAttributes.getShowResponsesTo());
+
+        assertEquals(qn.getCreatedAt(), feedbackQuestionAttributes.getCreatedAt());
+        assertEquals(qn.getUpdatedAt(), feedbackQuestionAttributes.getUpdatedAt());
+    }
+
+    @Test
+    public void testValueOf_withSomeFieldsPopulatedAsNull_shouldUseDefaultValues() {
+        FeedbackQuestion qn = new FeedbackQuestion("session", "course",
+                "text", "description", 1, FeedbackQuestionType.TEXT,
+                FeedbackParticipantType.STUDENTS, FeedbackParticipantType.STUDENTS, Const.MAX_POSSIBLE_RECIPIENTS,
+                null, null, null);
+        qn.setFeedbackQuestionId(1L);
+        qn.setCreatedAt(null);
+        qn.setLastUpdate(null);
+        qn.setShowGiverNameTo(null);
+        qn.setShowRecipientNameTo(null);
+        qn.setShowResponsesTo(null);
+        assertNull(qn.getShowGiverNameTo());
+        assertNull(qn.getShowRecipientNameTo());
+        assertNull(qn.getShowResponsesTo());
+
+        FeedbackQuestionAttributes feedbackQuestionAttributes = FeedbackQuestionAttributes.valueOf(qn);
+
+        assertEquals(qn.getId(), feedbackQuestionAttributes.getId());
+        assertEquals(qn.getFeedbackSessionName(), feedbackQuestionAttributes.getFeedbackSessionName());
+        assertEquals(qn.getCourseId(), feedbackQuestionAttributes.getCourseId());
+        assertEquals(qn.getQuestionMetaData(), feedbackQuestionAttributes.getQuestionDetails().getQuestionText());
+        assertEquals(qn.getQuestionDescription(), feedbackQuestionAttributes.getQuestionDescription());
+        assertEquals(feedbackQuestionAttributes.getQuestionNumber(), qn.getQuestionNumber());
+        assertEquals(qn.getQuestionType(), feedbackQuestionAttributes.getQuestionType());
+        assertEquals(qn.getGiverType(), feedbackQuestionAttributes.getGiverType());
+        assertEquals(qn.getRecipientType(), feedbackQuestionAttributes.getRecipientType());
+        assertEquals(qn.getNumberOfEntitiesToGiveFeedbackTo(),
+                feedbackQuestionAttributes.getNumberOfEntitiesToGiveFeedbackTo());
+
+        assertEquals(new ArrayList<>(), feedbackQuestionAttributes.getShowGiverNameTo());
+        assertEquals(new ArrayList<>(), feedbackQuestionAttributes.getShowRecipientNameTo());
+        assertEquals(new ArrayList<>(), feedbackQuestionAttributes.getShowResponsesTo());
+
+        assertEquals(Const.TIME_REPRESENTS_DEFAULT_TIMESTAMP, feedbackQuestionAttributes.getCreatedAt());
+        assertEquals(Const.TIME_REPRESENTS_DEFAULT_TIMESTAMP, feedbackQuestionAttributes.getUpdatedAt());
+    }
+
+    @Test
+    public void testBuilder_withIrrelevantFeedbackParticipant_shouldGenerateAttributesCorrectly() {
         List<FeedbackParticipantType> participants = new ArrayList<>();
         participants.add(FeedbackParticipantType.OWN_TEAM_MEMBERS);
         participants.add(FeedbackParticipantType.RECEIVER);
 
-        FeedbackQuestionsDb db = new FeedbackQuestionsDb();
-        FeedbackQuestionAttributes fqa = getNewFeedbackQuestionAttributes();
-        FeedbackQuestion qn = db.createEntityWithoutExistenceCheck(fqa);
-
-        FeedbackQuestionAttributes feedbackQuestionAttributes = FeedbackQuestionAttributes.valueOf(qn);
+        FeedbackQuestionAttributes feedbackQuestionAttributes = FeedbackQuestionAttributes.builder()
+                .withCourseId("testingCourse")
+                .withFeedbackSessionName("testFeedbackSession")
+                .withGiverType(FeedbackParticipantType.INSTRUCTORS)
+                .withRecipientType(FeedbackParticipantType.SELF)
+                .withNumberOfEntitiesToGiveFeedbackTo(1)
+                .withQuestionNumber(1)
+                .withQuestionDetails(new FeedbackTextQuestionDetails("text"))
+                .withShowGiverNameTo(new ArrayList<>(participants))
+                .withShowRecipientNameTo(new ArrayList<>(participants))
+                .withShowResponsesTo(new ArrayList<>(participants))
+                .build();
 
         List<FeedbackParticipantType> participantTypesAfterRemovingIrrelevantVisibilitiesOptions =
                 new ArrayList<>(participants);
         participantTypesAfterRemovingIrrelevantVisibilitiesOptions.remove(FeedbackParticipantType.OWN_TEAM_MEMBERS);
         participantTypesAfterRemovingIrrelevantVisibilitiesOptions.remove(FeedbackParticipantType.RECEIVER_TEAM_MEMBERS);
 
-        assertEquals(qn.getFeedbackSessionName(), feedbackQuestionAttributes.getFeedbackSessionName());
-        assertEquals(qn.getCourseId(), feedbackQuestionAttributes.getCourseId());
-        assertEquals(qn.getQuestionDescription(), feedbackQuestionAttributes.getQuestionDescription());
-        assertEquals(feedbackQuestionAttributes.getQuestionNumber(), qn.getQuestionNumber());
-        assertEquals(qn.getQuestionType(), feedbackQuestionAttributes.getQuestionType());
-        assertEquals(qn.getNumberOfEntitiesToGiveFeedbackTo(),
-                feedbackQuestionAttributes.getNumberOfEntitiesToGiveFeedbackTo());
-        assertEquals(qn.getQuestionMetaData(), feedbackQuestionAttributes.getQuestionMetaData());
-        assertEquals(qn.getGiverType(), feedbackQuestionAttributes.getGiverType());
-        assertEquals(qn.getRecipientType(), feedbackQuestionAttributes.getRecipientType());
-
-        // .build() in valueOf() will remove irrelevant visibilities options, so the lists showResponsesTo,
+        // .build() will remove irrelevant visibilities options, so the lists showResponsesTo,
         // showGiverNameTo, and showRecipientNameTo are not the same as the ones in qn
         assertEquals(participantTypesAfterRemovingIrrelevantVisibilitiesOptions,
                 feedbackQuestionAttributes.getShowGiverNameTo());
@@ -91,16 +154,129 @@ public class FeedbackQuestionAttributesTest extends BaseAttributesTest {
                 feedbackQuestionAttributes.getShowRecipientNameTo());
         assertEquals(participantTypesAfterRemovingIrrelevantVisibilitiesOptions,
                 feedbackQuestionAttributes.getShowResponsesTo());
-        assertEquals(qn.getCreatedAt(), feedbackQuestionAttributes.getCreatedAt());
-        assertEquals(qn.getUpdatedAt(), qn.getUpdatedAt());
-        assertEquals(qn.getId(), feedbackQuestionAttributes.getFeedbackQuestionId());
     }
 
     @Test
-    public void testBuilderWithPopulatedFieldValues() {
+    public void testValueOf_textQuestions_shouldDeserializeCorrectly() throws InvalidParametersException {
+        ______TS("legacy data: plain text: single word, should deserialize correctly");
+        FeedbackQuestion qn = new FeedbackQuestion("session", "course",
+                "singleWord", "description", 1, FeedbackQuestionType.TEXT,
+                FeedbackParticipantType.STUDENTS, FeedbackParticipantType.STUDENTS, Const.MAX_POSSIBLE_RECIPIENTS,
+                new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+        qn.setFeedbackQuestionId(1L);
+
+        FeedbackQuestionAttributes fqa = FeedbackQuestionAttributes.valueOf(qn);
+        assertEquals("singleWord", fqa.questionDetails.getQuestionText());
+        assertEquals(0, ((FeedbackTextQuestionDetails) fqa.questionDetails).getRecommendedLength());
+
+        ______TS("legacy data: plain text: multiple words, should deserialize correctly");
+        qn.setQuestionText("multiple words text");
+
+        FeedbackQuestionAttributes fqaMulti = FeedbackQuestionAttributes.valueOf(qn);
+        assertEquals("multiple words text", fqaMulti.questionDetails.getQuestionText());
+        assertEquals(0, ((FeedbackTextQuestionDetails) fqaMulti.questionDetails).getRecommendedLength());
+
+        ______TS("json text: should deserialize as json");
+        String jsonQuestionText = "{\n"
+                + "  \"recommendedLength\": 70,\n"
+                + "  \"questionType\": \"TEXT\",\n"
+                + "  \"questionText\": \"normal question\"\n"
+                + "}";
+        qn.setQuestionText(jsonQuestionText);
+        FeedbackQuestionAttributes fqaJson = FeedbackQuestionAttributes.valueOf(qn);
+        assertEquals("normal question", fqaJson.questionDetails.getQuestionText());
+        assertEquals(70, ((FeedbackTextQuestionDetails) fqaJson.questionDetails).getRecommendedLength());
+    }
+
+    @Test
+    public void testBuilder_withNullArguments_shouldThrowException() {
+        assertThrows(AssertionError.class, () -> {
+            FeedbackQuestionAttributes.builder()
+                    .withFeedbackSessionName(null)
+                    .build();
+        });
+
+        assertThrows(AssertionError.class, () -> {
+            FeedbackQuestionAttributes.builder()
+                    .withCourseId(null)
+                    .build();
+        });
+
+        assertThrows(AssertionError.class, () -> {
+            FeedbackQuestionAttributes.builder()
+                    .withQuestionDetails(null)
+                    .build();
+        });
+
+        assertThrows(AssertionError.class, () -> {
+            FeedbackQuestionAttributes.builder()
+                    .withGiverType(null)
+                    .build();
+        });
+
+        assertThrows(AssertionError.class, () -> {
+            FeedbackQuestionAttributes.builder()
+                    .withRecipientType(null)
+                    .build();
+        });
+
+        assertThrows(AssertionError.class, () -> {
+            FeedbackQuestionAttributes.builder()
+                    .withShowGiverNameTo(null)
+                    .build();
+        });
+
+        assertThrows(AssertionError.class, () -> {
+            List<FeedbackParticipantType> participants = new ArrayList<>();
+            participants.add(null);
+            FeedbackQuestionAttributes.builder()
+                    .withShowGiverNameTo(participants)
+                    .build();
+        });
+
+        assertThrows(AssertionError.class, () -> {
+            FeedbackQuestionAttributes.builder()
+                    .withShowRecipientNameTo(null)
+                    .build();
+        });
+
+        assertThrows(AssertionError.class, () -> {
+            List<FeedbackParticipantType> participants = new ArrayList<>();
+            participants.add(null);
+            FeedbackQuestionAttributes.builder()
+                    .withShowRecipientNameTo(participants)
+                    .build();
+        });
+
+        assertThrows(AssertionError.class, () -> {
+            FeedbackQuestionAttributes.builder()
+                    .withShowResponsesTo(null)
+                    .build();
+        });
+
+        assertThrows(AssertionError.class, () -> {
+            List<FeedbackParticipantType> participants = new ArrayList<>();
+            participants.add(null);
+            FeedbackQuestionAttributes.builder()
+                    .withShowResponsesTo(participants)
+                    .build();
+        });
+    }
+
+    @Test
+    public void testBuilder_withDescriptionNull_shouldBuildCorrectAttributes() {
+        FeedbackQuestionAttributes feedbackQuestionAttributes = FeedbackQuestionAttributes.builder()
+                .withQuestionDescription(null)
+                .build();
+
+        assertNull(feedbackQuestionAttributes.getQuestionDescription());
+    }
+
+    @Test
+    public void testBuilder_withTypicalData_shouldBuildCorrectAttributes() {
         String feedbackSession = "test session";
         String courseId = "some course";
-        String questionMetaData = "test qn from teams->none.";
+        FeedbackQuestionDetails questionDetails = new FeedbackTextQuestionDetails("test qn from teams->none.");
         String questionDescription = "some description";
         int questionNumber = 1;
         int numOfEntities = 4;
@@ -110,97 +286,56 @@ public class FeedbackQuestionAttributesTest extends BaseAttributesTest {
 
         List<FeedbackParticipantType> participants = new ArrayList<>();
         participants.add(FeedbackParticipantType.RECEIVER);
-        Instant createdAt = Instant.now();
-        Instant updatedAt = Instant.ofEpochMilli(9876545);
-        String feedbackQuestionId = "agR0ZXN0choLEhBGZWVkYmFja1F1ZXN0aW9uGL648P4tDA";
 
         FeedbackQuestionAttributes feedbackQuestionAttributes = FeedbackQuestionAttributes.builder()
                 .withFeedbackSessionName(feedbackSession)
                 .withCourseId(courseId)
-                .withQuestionMetaData(questionMetaData)
+                .withQuestionDetails(questionDetails)
                 .withQuestionDescription(questionDescription)
                 .withQuestionNumber(questionNumber)
-                .withNumOfEntitiesToGiveFeedbackTo(numOfEntities)
-                .withQuestionType(questionType)
+                .withNumberOfEntitiesToGiveFeedbackTo(numOfEntities)
                 .withGiverType(giverType)
                 .withRecipientType(recipientType)
                 .withShowGiverNameTo(new ArrayList<>(participants))
                 .withShowRecipientNameTo(new ArrayList<>(participants))
-                .withShowResponseTo(new ArrayList<>(participants))
-                .withCreatedAt(createdAt)
-                .withUpdatedAt(updatedAt)
-                .withFeedbackQuestionId(feedbackQuestionId)
+                .withShowResponsesTo(new ArrayList<>(participants))
                 .build();
 
         assertEquals(feedbackSession, feedbackQuestionAttributes.getFeedbackSessionName());
         assertEquals(courseId, feedbackQuestionAttributes.getCourseId());
-        assertEquals(questionMetaData, feedbackQuestionAttributes.getQuestionMetaData());
-        assertEquals(questionDescription, feedbackQuestionAttributes.questionDescription);
+        assertEquals(JsonUtils.toJson(questionDetails), JsonUtils.toJson(feedbackQuestionAttributes.getQuestionDetails()));
+        assertEquals(questionDescription, feedbackQuestionAttributes.getQuestionDescription());
         assertEquals(questionNumber, feedbackQuestionAttributes.getQuestionNumber());
-        assertEquals(numOfEntities, feedbackQuestionAttributes.numberOfEntitiesToGiveFeedbackTo);
+        assertEquals(numOfEntities, feedbackQuestionAttributes.getNumberOfEntitiesToGiveFeedbackTo());
         assertEquals(questionType, feedbackQuestionAttributes.getQuestionType());
         assertEquals(giverType, feedbackQuestionAttributes.getGiverType());
         assertEquals(recipientType, feedbackQuestionAttributes.getRecipientType());
-        assertEquals(participants, feedbackQuestionAttributes.showGiverNameTo);
-        assertEquals(participants, feedbackQuestionAttributes.showResponsesTo);
-        assertEquals(participants, feedbackQuestionAttributes.showRecipientNameTo);
-        assertEquals(createdAt, feedbackQuestionAttributes.getCreatedAt());
-        assertEquals(updatedAt, feedbackQuestionAttributes.getUpdatedAt());
-        assertEquals(feedbackQuestionId, feedbackQuestionAttributes.getFeedbackQuestionId());
+        assertEquals(participants, feedbackQuestionAttributes.getShowGiverNameTo());
+        assertEquals(participants, feedbackQuestionAttributes.getShowResponsesTo());
+        assertEquals(participants, feedbackQuestionAttributes.getShowRecipientNameTo());
+
+        assertNull(feedbackQuestionAttributes.getCreatedAt());
+        assertNull(feedbackQuestionAttributes.getUpdatedAt());
     }
 
     @Test
-    public void testBuilderSanitizeForBuild() {
-
-        ______TS("sanitize whitespace");
-
-        String contentWithWhitespaces = " content to be sanitized by removing leading/trailing whitespace ";
-        FeedbackQuestionAttributes feedbackQuestionAttributes = FeedbackQuestionAttributes.builder()
-                .withQuestionMetaData("test qn from teams->none.")
-                .withQuestionDescription(contentWithWhitespaces)
-                .build();
-
-        assertEquals("content to be sanitized by removing leading/trailing whitespace",
-                feedbackQuestionAttributes.getQuestionDescription());
-    }
-
-    @Test
-    public void testBuilderWithDefaultValues() {
+    public void testBuilder_buildNothing_shouldUseDefaultValues() {
         FeedbackQuestionAttributes observedFeedbackQuestionAttributes =
                 FeedbackQuestionAttributes.builder().build();
 
-        assertEquals(0, observedFeedbackQuestionAttributes.questionNumber);
-        assertNull(observedFeedbackQuestionAttributes.recipientType);
-        assertNull(observedFeedbackQuestionAttributes.giverType);
-        assertNull(observedFeedbackQuestionAttributes.courseId);
-        assertNull(observedFeedbackQuestionAttributes.feedbackSessionName);
-        assertNull(observedFeedbackQuestionAttributes.showResponsesTo);
-        assertNull(observedFeedbackQuestionAttributes.showGiverNameTo);
-        assertNull(observedFeedbackQuestionAttributes.showRecipientNameTo);
-        assertNull(observedFeedbackQuestionAttributes.questionDescription);
-        assertNull(observedFeedbackQuestionAttributes.questionType);
-        assertNull(observedFeedbackQuestionAttributes.questionMetaData);
-        assertEquals(0, observedFeedbackQuestionAttributes.numberOfEntitiesToGiveFeedbackTo);
-    }
-
-    @Test
-    public void testDefaultTimestamp() {
-
-        FeedbackQuestionAttributesWithModifiableTimestamp fq =
-                new FeedbackQuestionAttributesWithModifiableTimestamp();
-
-        fq.setCreatedAt(null);
-        fq.setUpdatedAt(null);
-
-        Instant defaultTimeStamp = Const.TIME_REPRESENTS_DEFAULT_TIMESTAMP;
-
-        ______TS("success : defaultTimeStamp for createdAt date");
-
-        assertEquals(defaultTimeStamp, fq.getCreatedAt());
-
-        ______TS("success : defaultTimeStamp for updatedAt date");
-
-        assertEquals(defaultTimeStamp, fq.getUpdatedAt());
+        assertEquals(0, observedFeedbackQuestionAttributes.getQuestionNumber());
+        assertNull(observedFeedbackQuestionAttributes.getRecipientType());
+        assertNull(observedFeedbackQuestionAttributes.getGiverType());
+        assertNull(observedFeedbackQuestionAttributes.getCourseId());
+        assertNull(observedFeedbackQuestionAttributes.getFeedbackSessionName());
+        assertEquals(new ArrayList<>(), observedFeedbackQuestionAttributes.getShowResponsesTo());
+        assertEquals(new ArrayList<>(), observedFeedbackQuestionAttributes.getShowGiverNameTo());
+        assertEquals(new ArrayList<>(), observedFeedbackQuestionAttributes.getShowRecipientNameTo());
+        assertNull(observedFeedbackQuestionAttributes.getQuestionDescription());
+        assertNull(observedFeedbackQuestionAttributes.questionDetails);
+        assertEquals(0, observedFeedbackQuestionAttributes.getNumberOfEntitiesToGiveFeedbackTo());
+        assertNull(observedFeedbackQuestionAttributes.getCreatedAt());
+        assertNull(observedFeedbackQuestionAttributes.getUpdatedAt());
     }
 
     @Test
@@ -221,12 +356,11 @@ public class FeedbackQuestionAttributesTest extends BaseAttributesTest {
         FeedbackQuestionAttributes fq = FeedbackQuestionAttributes.builder()
                 .withFeedbackSessionName("")
                 .withCourseId("")
-                .withQuestionType(FeedbackQuestionType.TEXT)
                 .withGiverType(FeedbackParticipantType.NONE)
                 .withRecipientType(FeedbackParticipantType.RECEIVER)
                 .withShowGiverNameTo(new ArrayList<>(showGiverNameToList))
                 .withShowRecipientNameTo(new ArrayList<>(showRecipientNameToList))
-                .withShowResponseTo(new ArrayList<>(showResponseToList))
+                .withShowResponsesTo(new ArrayList<>(showResponseToList))
                 .build();
 
         assertFalse(fq.isValid());
@@ -356,15 +490,14 @@ public class FeedbackQuestionAttributesTest extends BaseAttributesTest {
         FeedbackQuestionAttributes question = FeedbackQuestionAttributes.builder()
                 .withFeedbackSessionName("test session")
                 .withCourseId("some course")
-                .withQuestionMetaData("test qn from teams->none.")
+                .withQuestionDetails(new FeedbackTextQuestionDetails("test qn from teams->none."))
                 .withQuestionNumber(1)
-                .withQuestionType(FeedbackQuestionType.TEXT)
                 .withGiverType(FeedbackParticipantType.TEAMS)
                 .withRecipientType(FeedbackParticipantType.NONE)
                 .withShowGiverNameTo(new ArrayList<>(participants))
                 .withShowRecipientNameTo(new ArrayList<>(participants))
-                .withShowResponseTo(new ArrayList<>(participantsForShowResponseTo))
-                .withNumOfEntitiesToGiveFeedbackTo(Const.MAX_POSSIBLE_RECIPIENTS)
+                .withShowResponsesTo(new ArrayList<>(participantsForShowResponseTo))
+                .withNumberOfEntitiesToGiveFeedbackTo(Const.MAX_POSSIBLE_RECIPIENTS)
                 .build();
 
         assertTrue(question.showGiverNameTo.isEmpty());
@@ -500,6 +633,27 @@ public class FeedbackQuestionAttributesTest extends BaseAttributesTest {
         assertEquals(expectedBackUpIdentifierMessage, questionAttributes.getBackupIdentifier());
     }
 
+    @Test
+    public void testGetQuestionDetails_shouldDoDeepCopy() {
+        FeedbackQuestionAttributes fqa = getNewFeedbackQuestionAttributes();
+        FeedbackQuestionDetails details = fqa.getQuestionDetails();
+        fqa.questionDetails.setQuestionText("updated question");
+
+        assertEquals("Question text.", details.getQuestionText());
+        assertEquals("updated question", fqa.questionDetails.getQuestionText());
+    }
+
+    @Test
+    public void testSetQuestionDetails_shouldDoDeepCopy() {
+        FeedbackQuestionAttributes fqa = getNewFeedbackQuestionAttributes();
+        FeedbackQuestionDetails details = new FeedbackTextQuestionDetails("my question");
+        fqa.setQuestionDetails(details);
+        details.setQuestionText("updated question");
+
+        assertEquals("updated question", details.getQuestionText());
+        assertEquals("my question", fqa.questionDetails.getQuestionText());
+    }
+
     private FeedbackQuestionAttributes getNewFeedbackQuestionAttributes() {
         FeedbackTextQuestionDetails questionDetails = new FeedbackTextQuestionDetails("Question text.");
 
@@ -512,13 +666,12 @@ public class FeedbackQuestionAttributesTest extends BaseAttributesTest {
                 .withFeedbackSessionName("testFeedbackSession")
                 .withGiverType(FeedbackParticipantType.INSTRUCTORS)
                 .withRecipientType(FeedbackParticipantType.SELF)
-                .withNumOfEntitiesToGiveFeedbackTo(1)
+                .withNumberOfEntitiesToGiveFeedbackTo(1)
                 .withQuestionNumber(1)
-                .withQuestionType(FeedbackQuestionType.TEXT)
-                .withQuestionMetaData(questionDetails)
+                .withQuestionDetails(questionDetails)
                 .withShowGiverNameTo(new ArrayList<>(participants))
                 .withShowRecipientNameTo(new ArrayList<>(participants))
-                .withShowResponseTo(new ArrayList<>(participants))
+                .withShowResponsesTo(new ArrayList<>(participants))
                 .build();
     }
 
@@ -534,7 +687,7 @@ public class FeedbackQuestionAttributesTest extends BaseAttributesTest {
                         .withNumberOfEntitiesToGiveFeedbackTo(2)
                         .withShowResponsesTo(Lists.newArrayList(
                                 FeedbackParticipantType.INSTRUCTORS, FeedbackParticipantType.RECEIVER_TEAM_MEMBERS))
-                        .withShowGiveNameTo(Lists.newArrayList(FeedbackParticipantType.INSTRUCTORS))
+                        .withShowGiverNameTo(Lists.newArrayList(FeedbackParticipantType.INSTRUCTORS))
                         .withShowRecipientNameTo(Lists.newArrayList(FeedbackParticipantType.INSTRUCTORS))
                         .build();
 
@@ -546,13 +699,12 @@ public class FeedbackQuestionAttributesTest extends BaseAttributesTest {
                         .withFeedbackSessionName("session")
                         .withGiverType(FeedbackParticipantType.INSTRUCTORS)
                         .withRecipientType(FeedbackParticipantType.SELF)
-                        .withNumOfEntitiesToGiveFeedbackTo(3)
+                        .withNumberOfEntitiesToGiveFeedbackTo(3)
                         .withQuestionNumber(1)
-                        .withQuestionType(FeedbackQuestionType.TEXT)
-                        .withQuestionMetaData(new FeedbackTextQuestionDetails("question text 2"))
+                        .withQuestionDetails(new FeedbackTextQuestionDetails("question text 2"))
                         .withShowGiverNameTo(new ArrayList<>())
                         .withShowRecipientNameTo(new ArrayList<>())
-                        .withShowResponseTo(new ArrayList<>())
+                        .withShowResponsesTo(new ArrayList<>())
                         .build();
 
         questionAttributes.update(updateOptions);
@@ -585,13 +737,12 @@ public class FeedbackQuestionAttributesTest extends BaseAttributesTest {
                         .withFeedbackSessionName("session")
                         .withGiverType(FeedbackParticipantType.INSTRUCTORS)
                         .withRecipientType(FeedbackParticipantType.SELF)
-                        .withNumOfEntitiesToGiveFeedbackTo(3)
+                        .withNumberOfEntitiesToGiveFeedbackTo(3)
                         .withQuestionNumber(1)
-                        .withQuestionType(FeedbackQuestionType.TEXT)
-                        .withQuestionMetaData(new FeedbackTextQuestionDetails("question text"))
+                        .withQuestionDetails(new FeedbackTextQuestionDetails("question text"))
                         .withShowGiverNameTo(new ArrayList<>())
                         .withShowRecipientNameTo(new ArrayList<>())
-                        .withShowResponseTo(new ArrayList<>())
+                        .withShowResponsesTo(new ArrayList<>())
                         .build();
 
         questionAttributes.update(updateOptions);
@@ -627,23 +778,32 @@ public class FeedbackQuestionAttributesTest extends BaseAttributesTest {
         assertThrows(AssertionError.class, () ->
                 FeedbackQuestionAttributes.updateOptionsBuilder("id")
                         .withShowResponsesTo(null));
+        assertThrows(AssertionError.class, () -> {
+            List<FeedbackParticipantType> participants = new ArrayList<>();
+            participants.add(null);
+            FeedbackQuestionAttributes.updateOptionsBuilder("id")
+                    .withShowResponsesTo(participants)
+                    .build();
+        });
         assertThrows(AssertionError.class, () ->
                 FeedbackQuestionAttributes.updateOptionsBuilder("id")
-                        .withShowGiveNameTo(null));
+                        .withShowGiverNameTo(null));
+        assertThrows(AssertionError.class, () -> {
+            List<FeedbackParticipantType> participants = new ArrayList<>();
+            participants.add(null);
+            FeedbackQuestionAttributes.updateOptionsBuilder("id")
+                    .withShowGiverNameTo(participants)
+                    .build();
+        });
         assertThrows(AssertionError.class, () ->
                 FeedbackQuestionAttributes.updateOptionsBuilder("id")
                         .withShowRecipientNameTo(null));
-    }
-
-    private static class FeedbackQuestionAttributesWithModifiableTimestamp extends FeedbackQuestionAttributes {
-
-        void setCreatedAt(Instant createdAt) {
-            this.createdAt = createdAt;
-        }
-
-        void setUpdatedAt(Instant updatedAt) {
-            this.updatedAt = updatedAt;
-        }
-
+        assertThrows(AssertionError.class, () -> {
+            List<FeedbackParticipantType> participants = new ArrayList<>();
+            participants.add(null);
+            FeedbackQuestionAttributes.updateOptionsBuilder("id")
+                    .withShowRecipientNameTo(participants)
+                    .build();
+        });
     }
 }
