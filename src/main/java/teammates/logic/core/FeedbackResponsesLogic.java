@@ -53,6 +53,13 @@ public final class FeedbackResponsesLogic {
     }
 
     /**
+     * Gets a set of giver identifiers that has at least one response under a feedback session.
+     */
+    public Set<String> getGiverSetThatAnswerFeedbackSession(String courseId, String feedbackSessionName) {
+        return frDb.getGiverSetThatAnswerFeedbackSession(courseId, feedbackSessionName);
+    }
+
+    /**
      * Creates a feedback response.
      *
      * @return created feedback response
@@ -152,9 +159,11 @@ public final class FeedbackResponsesLogic {
         return frDb.getFeedbackResponsesForQuestion(feedbackQuestionId);
     }
 
-    public List<FeedbackResponseAttributes> getFeedbackResponsesForQuestionWithinRange(
-            String feedbackQuestionId, int range) {
-        return frDb.getFeedbackResponsesForQuestionWithinRange(feedbackQuestionId, range);
+    /**
+     * Checks whether there are responses for a question.
+     */
+    public boolean areThereResponsesForQuestion(String feedbackQuestionId) {
+        return frDb.areThereResponsesForQuestion(feedbackQuestionId);
     }
 
     public List<FeedbackResponseAttributes> getFeedbackResponsesForQuestionInSection(

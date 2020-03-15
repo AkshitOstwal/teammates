@@ -1,6 +1,8 @@
 import { Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
-import { Course, CourseArchive, JoinStatus, MessageOutput } from '../types/api-output';
+import { forkJoin, Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { ResourceEndpoints } from '../types/api-endpoints';
+import { Course, CourseArchive, Courses,  HasResponses, JoinStatus, MessageOutput } from '../types/api-output';
 import { CourseArchiveRequest, CourseCreateRequest, CourseUpdateRequest } from '../types/api-request';
 import { HttpRequestService } from './http-request.service';
 
@@ -16,13 +18,94 @@ export class CourseService {
   }
 
   /**
-   * Get course data by calling API.
+   * Gets all course data for an instructor by calling API.
    */
-  getCourse(courseId: string): Observable<Course> {
+  getAllCoursesAsInstructor(courseStatus: string): Observable<Courses> {
+    const paramMap: { [key: string]: string } = {
+      entitytype: 'instructor',
+      coursestatus: courseStatus,
+    };
+    return this.httpRequestService.get(ResourceEndpoints.COURSES, paramMap);
+  }
+
+  /**
+   * Get course data by calling API as an instructor.
+   */
+  getCourseAsInstructor(courseId: string): Observable<Course> {
     const paramMap: { [key: string]: string } = {
       courseid: courseId,
+      entitytype: 'instructor',
     };
-    return this.httpRequestService.get('/course', paramMap);
+    return this.httpRequestService.get(ResourceEndpoints.COURSE, paramMap);
+  }
+
+  /**
+   * Gets all course data for a student by calling API.
+   */
+  getAllCoursesAsStudent(): Observable<Courses> {
+    const paramMap: { [key: string]: string } = {
+      entitytype: 'student',
+    };
+    return this.httpRequestService.get(ResourceEndpoints.COURSES, paramMap);
+  }
+
+  /**
+   * Get course data by calling API as a student.
+   */
+  getCourseAsStudent(courseId: string): Observable<Course> {
+    const paramMap: { [key: string]: string } = {
+      courseid: courseId,
+      entitytype: 'student',
+    };
+    return this.httpRequestService.get(ResourceEndpoints.COURSE, paramMap);
+  }
+
+  /**
+   * Get student courses data of a given google id in masquerade mode by calling API.
+   */
+  getStudentCoursesInMasqueradeMode(googleId: string): Observable<Courses> {
+    const paramMap: { [key: string]: string } = {
+      entitytype: 'student',
+      user: googleId,
+    };
+    return this.httpRequestService.get(ResourceEndpoints.COURSES, paramMap);
+  }
+
+  /**
+   * Get instructor courses data of a given google id in masquerade mode by calling API.
+   */
+  getInstructorCoursesInMasqueradeMode(googleId: string): Observable<Courses> {
+    const activeCoursesParamMap: { [key: string]: string } = {
+      coursestatus: 'active',
+      entitytype: 'instructor',
+      user: googleId,
+    };
+    const archivedCoursesParamMap: { [key: string]: string } = {
+      coursestatus: 'archived',
+      entitytype: 'instructor',
+      user: googleId,
+    };
+
+    return forkJoin(
+        this.httpRequestService.get(ResourceEndpoints.COURSES, activeCoursesParamMap),
+        this.httpRequestService.get(ResourceEndpoints.COURSES, archivedCoursesParamMap),
+    ).pipe(
+        map((vals: Courses[]) => {
+          return {
+            courses: vals[0].courses.concat(vals[1].courses),
+          };
+        }),
+    );
+  }
+
+  /**
+   * Get active instructor courses.
+   */
+  getInstructorCoursesThatAreActive(): Observable<Courses> {
+    return this.httpRequestService.get(ResourceEndpoints.COURSES, {
+      entitytype: 'instructor',
+      coursestatus: 'active',
+    });
   }
 
   /**
@@ -30,7 +113,7 @@ export class CourseService {
    */
   createCourse(request: CourseCreateRequest): Observable<Course> {
     const paramMap: { [key: string]: string } = {};
-    return this.httpRequestService.post('/course', paramMap, request);
+    return this.httpRequestService.post(ResourceEndpoints.COURSE, paramMap, request);
   }
 
   /**
@@ -38,7 +121,7 @@ export class CourseService {
    */
   updateCourse(courseid: string, request: CourseUpdateRequest): Observable<Course> {
     const paramMap: { [key: string]: string } = { courseid };
-    return this.httpRequestService.put('/course', paramMap, request);
+    return this.httpRequestService.put(ResourceEndpoints.COURSE, paramMap, request);
   }
 
   /**
@@ -46,7 +129,7 @@ export class CourseService {
    */
   deleteCourse(courseid: string): Observable<MessageOutput> {
     const paramMap: { [key: string]: string } = { courseid };
-    return this.httpRequestService.delete('/course', paramMap);
+    return this.httpRequestService.delete(ResourceEndpoints.COURSE, paramMap);
   }
 
   /**
@@ -54,7 +137,7 @@ export class CourseService {
    */
   changeArchiveStatus(courseid: string, request: CourseArchiveRequest): Observable<CourseArchive> {
     const paramMap: { [key: string]: string } = { courseid };
-    return this.httpRequestService.put('/course/archive', paramMap, request);
+    return this.httpRequestService.put(ResourceEndpoints.COURSE_ARCHIVE, paramMap, request);
   }
 
   /**
@@ -62,18 +145,38 @@ export class CourseService {
    */
   binCourse(courseid: string): Observable<Course> {
     const paramMap: { [key: string]: string } = { courseid };
-    return this.httpRequestService.put('/bin/course', paramMap);
+    return this.httpRequestService.put(ResourceEndpoints.BIN_COURSE, paramMap);
+  }
+
+  /**
+   * Restore a soft-deleted course by calling API.
+   */
+  restoreCourse(courseid: string): Observable<MessageOutput> {
+    const paramMap: { [key: string]: string } = { courseid };
+    return this.httpRequestService.delete(ResourceEndpoints.BIN_COURSE, paramMap);
+  }
+
+  /**
+   * Get the status of whether the entity has joined the course by calling API.
+   */
+  getJoinCourseStatus(regKey: string, entityType: string): Observable<JoinStatus> {
+    const paramMap: { [key: string]: string } = {
+      key: regKey,
+      entitytype: entityType,
+    };
+    return this.httpRequestService.get(ResourceEndpoints.JOIN, paramMap);
   }
 
   /**
    * Join a course by calling API.
    */
-  joinCourse(regKey: string, entityType: string): Observable<JoinStatus> {
+  joinCourse(regKey: string, entityType: string, institute: string): Observable<any> {
     const paramMap: { [key: string]: string } = {
       key: regKey,
       entitytype: entityType,
+      instructorinstitution: institute,
     };
-    return this.httpRequestService.get('/join', paramMap);
+    return this.httpRequestService.put(ResourceEndpoints.JOIN, paramMap);
   }
 
   /**
@@ -83,7 +186,7 @@ export class CourseService {
     const paramMap: { [key: string]: string } = {
       courseid: courseId,
     };
-    return this.httpRequestService.post('/join/remind', paramMap);
+    return this.httpRequestService.post(ResourceEndpoints.JOIN_REMIND, paramMap);
   }
 
   /**
@@ -94,7 +197,7 @@ export class CourseService {
       courseid: courseId,
       studentemail: studentEmail,
     };
-    return this.httpRequestService.post('/join/remind', paramMap);
+    return this.httpRequestService.post(ResourceEndpoints.JOIN_REMIND, paramMap);
   }
 
   /**
@@ -105,6 +208,28 @@ export class CourseService {
       courseid: courseId,
       instructoremail: instructorEmail,
     };
-    return this.httpRequestService.post('/join/remind', paramMap);
+    return this.httpRequestService.post(ResourceEndpoints.JOIN_REMIND, paramMap);
+  }
+
+  /**
+   * Checks if there are responses for a course (request sent by instructor).
+   */
+  hasResponsesForCourse(courseId: string): Observable<HasResponses> {
+    const paramMap: { [key: string]: string } = {
+      entitytype: 'instructor',
+      courseid: courseId,
+    };
+    return this.httpRequestService.get(ResourceEndpoints.HAS_RESPONSES, paramMap);
+  }
+
+  /**
+   * Removes student from course.
+   */
+  removeStudentFromCourse(courseId: string, studentEmail: string): Observable<any> {
+    const paramsMap: { [key: string]: string } = {
+      courseid: courseId,
+      studentemail: studentEmail,
+    };
+    return this.httpRequestService.delete(ResourceEndpoints.STUDENT, paramsMap);
   }
 }

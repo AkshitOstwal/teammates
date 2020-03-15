@@ -181,6 +181,13 @@ public final class FeedbackSessionsLogic {
     }
 
     /**
+     * Returns a list of feedback sessions within the time range or an empty list if nothing was found.
+     */
+    public List<FeedbackSessionAttributes> getAllFeedbackSessionsWithinTimeRange(Instant rangeStart, Instant rangeEnd) {
+        return fsDb.getFeedbackSessionsWithinTimeRange(rangeStart, rangeEnd);
+    }
+
+    /**
      * Returns true if there is some open or published email sent for the course.
      *
      * @param courseId - ID of the course
@@ -1303,15 +1310,23 @@ public final class FeedbackSessionsLogic {
     /**
      * Publishes a feedback session.
      *
+     * @return the published feedback session
      * @throws InvalidParametersException if session is already published
+     * @throws EntityDoesNotExistException if the feedback session cannot be found
      */
-    public void publishFeedbackSession(FeedbackSessionAttributes sessionToPublish)
+    public FeedbackSessionAttributes publishFeedbackSession(String feedbackSessionName, String courseId)
             throws EntityDoesNotExistException, InvalidParametersException {
+
+        FeedbackSessionAttributes sessionToPublish = getFeedbackSession(feedbackSessionName, courseId);
+
+        if (sessionToPublish == null) {
+            throw new EntityDoesNotExistException(ERROR_NON_EXISTENT_FS_UPDATE + courseId + "/" + feedbackSessionName);
+        }
         if (sessionToPublish.isPublished()) {
             throw new InvalidParametersException(ERROR_FS_ALREADY_PUBLISH);
         }
 
-        updateFeedbackSession(
+        return updateFeedbackSession(
                 FeedbackSessionAttributes
                         .updateOptionsBuilder(sessionToPublish.getFeedbackSessionName(), sessionToPublish.getCourseId())
                         .withResultsVisibleFromTime(Instant.now())
@@ -1321,15 +1336,23 @@ public final class FeedbackSessionsLogic {
     /**
      * Unpublishes a feedback session.
      *
+     * @return the unpublished feedback session
      * @throws InvalidParametersException if session is already unpublished
+     * @throws EntityDoesNotExistException if the feedback session cannot be found
      */
-    public void unpublishFeedbackSession(FeedbackSessionAttributes sessionToUnpublish)
+    public FeedbackSessionAttributes unpublishFeedbackSession(String feedbackSessionName, String courseId)
             throws EntityDoesNotExistException, InvalidParametersException {
+
+        FeedbackSessionAttributes sessionToUnpublish = getFeedbackSession(feedbackSessionName, courseId);
+
+        if (sessionToUnpublish == null) {
+            throw new EntityDoesNotExistException(ERROR_NON_EXISTENT_FS_UPDATE + courseId + "/" + feedbackSessionName);
+        }
         if (!sessionToUnpublish.isPublished()) {
             throw new InvalidParametersException(ERROR_FS_ALREADY_UNPUBLISH);
         }
 
-        updateFeedbackSession(
+        return updateFeedbackSession(
                 FeedbackSessionAttributes
                         .updateOptionsBuilder(sessionToUnpublish.getFeedbackSessionName(), sessionToUnpublish.getCourseId())
                         .withResultsVisibleFromTime(Const.TIME_REPRESENTS_LATER)
